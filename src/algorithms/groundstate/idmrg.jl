@@ -1,27 +1,14 @@
-function check_state(psi::InfiniteMPS,pos=-10,dir=0)
-    psibc=MPIHelper.bcast(psi, MPI.COMM_WORLD)
-    if !mpi_is_root()
-        for typ in [:AL,:AR,:C]
-            psi_c=getfield(psibc, typ)
-            psi_l=getfield(psi, typ)
-            for i in eachindex(psi_c)
-                pc=psi_c[i]
-                pl=psi_l[i]
-                @assert norm(pc-pl)<1e-10 "Wrong MPS on rank $(mpi_rank()) for tensor $typ at site $i: norm difference=$(norm(pc-pl)) and dir=$dir pos=$pos"
-            end
-        end
-    end
-end
-
-function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs, alg_eigsolve, ::IDMRG)
-    E=0
+function MPSKit._localupdate_sweep_idmrg!(ψ, H::MPIOperator, envs, alg_eigsolve, ::IDMRG)
+    E = 0
     C_old = ψ.C[0]
     # left to right sweep
     for pos in 1:length(ψ)
         h = AC_hamiltonian(pos, ψ, H, ψ, envs)
 
-        ψ.AC[pos] = MPIHelper.bcast(fixedpoint(h, ψ.AC[pos], :SR, alg_eigsolve)[2], MPI.COMM_WORLD)
-        ψ.AL[pos], ψ.C[pos] = mpi_execute_on_root_and_bcast(left_orth,ψ.AC[pos])
+        AC = fixedpoint(h, ψ.AC[pos], :SR, alg_eigsolve)[2]
+
+        ψ.AC[pos] = MPILargeCounts.bcast(AC, MPI.COMM_WORLD)
+        ψ.AL[pos], ψ.C[pos] = mpi_execute_on_root_and_bcast(left_orth, ψ.AC[pos])
 
         transfer_leftenv!(envs, ψ, H, ψ, pos + 1)
     end
@@ -30,9 +17,9 @@ function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs,
     for pos in length(ψ):-1:1
         h = AC_hamiltonian(pos, ψ, H, ψ, envs)
 
-        E, ψ.AC[pos] = fixedpoint(h, ψ.AC[pos], :SR, alg_eigsolve)
-        ψ.AC[pos] = MPIHelper.bcast(ψ.AC[pos], MPI.COMM_WORLD)
-        ψ.C[pos - 1], temp = mpi_execute_on_root_and_bcast(right_orth!,_transpose_tail(ψ.AC[pos]; copy = (pos == 1)))
+        E, AC = fixedpoint(h, ψ.AC[pos], :SR, alg_eigsolve)
+        ψ.AC[pos] = MPILargeCounts.bcast(AC, MPI.COMM_WORLD)
+        ψ.C[pos - 1], temp = mpi_execute_on_root_and_bcast(right_orth!, _transpose_tail(ψ.AC[pos]; copy = (pos == 1)))
         ψ.AR[pos] = _transpose_front(temp)
 
         transfer_rightenv!(envs, ψ, H, ψ, pos - 1)
@@ -40,14 +27,14 @@ function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs,
     return ψ, envs, C_old, E
 end
 
-function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs, alg_eigsolve, alg::IDMRG2)
+function _localupdate_sweep_idmrg2!(ψ, H::MPIOperator, envs, alg_eigsolve, alg_trscheme, alg_svd)
     # sweep from left to right
     for pos in 1:(length(ψ) - 1)
         ac2 = AC2(ψ, pos; kind = :ACAR)
         h_ac2 = AC2_hamiltonian(pos, ψ, H, ψ, envs)
         _, ac2′ = fixedpoint(h_ac2, ac2, :SR, alg_eigsolve)
 
-        al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg.trscheme, alg = alg.alg_svd)
+        al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg_trscheme, alg = alg_svd)
         normalize!(c)
 
         ψ.AL[pos] = al
@@ -66,7 +53,7 @@ function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs,
     h_ac2 = AC2_hamiltonian(0, ψ, H, ψ, envs)
     _, ac2′ = fixedpoint(h_ac2, ac2, :SR, alg_eigsolve)
 
-    al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg.trscheme, alg = alg.alg_svd)
+    al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg_trscheme, alg = alg_svd)
     normalize!(c)
 
     ψ.AL[end] = al
@@ -89,7 +76,7 @@ function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs,
         h_ac2 = AC2_hamiltonian(pos, ψ, H, ψ, envs)
         _, ac2′ = fixedpoint(h_ac2, ac2, :SR, alg_eigsolve)
 
-        al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg.trscheme, alg = alg.alg_svd)
+        al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg_trscheme, alg = alg_svd)
         normalize!(c)
 
         ψ.AL[pos] = al
@@ -108,7 +95,7 @@ function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs,
     ac2 = AC2(ψ, 0; kind = :ACAR)
     h_ac2 = AC2_hamiltonian(0, ψ, H, ψ, envs)
     E, ac2′ = fixedpoint(h_ac2, ac2, :SR, alg_eigsolve)
-    al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg.trscheme, alg = alg.alg_svd)
+    al, c, ar = mpi_execute_on_root_and_bcast(svd_trunc!, ac2′; trunc = alg_trscheme, alg = alg_svd)
     normalize!(c)
 
     ψ.AL[end] = al
@@ -120,6 +107,5 @@ function MPSKit._localupdate_sweep_idmrg!(ψ::AbstractMPS, H::MPIOperator, envs,
 
     transfer_leftenv!(envs, ψ, H, ψ, 1)
     transfer_rightenv!(envs, ψ, H, ψ, 0)
-
     return ψ, envs, C_old, E
 end

@@ -1,0 +1,20 @@
+[deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
+MPILargeCounts = "03b5a6d4-3f85-4eec-9d38-a1f1826bd98e"
+MPSKit = "bb1c41ca-d63c-52ed-829e-0820dda26502"
+MPSKitModels = "ca635005-6f8c-4cd1-b51d-8491250ef2ab"
+MPSKitParallel = "9e7a2049-d464-45e7-afa7-8ebdb5f1c98e"
+SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
+Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+TensorKit = "07d1fe3e-3e46-537d-9eac-e9e13d0d4cec"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestExtras = "5ed8adda-3752-4e41-b88a-e8b09835ee3a"
+
+[compat]
+Aqua = "0.8"
+MPSKit = "0.13.8"
+SafeTestsets = "0.1"
+Suppressor = "0.2"
+TensorKit = "0.15.2,0.16"
+Test = "1.10"

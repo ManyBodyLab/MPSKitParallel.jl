@@ -34,7 +34,7 @@ jobs:
           - ubuntu-latest
           - macOS-latest
           - windows-latest
-    uses: "QuantumKitHub/QuantumKitHubActions/.github/workflows/Tests.yml@main"
+    uses: "ManyBodyLab/ManyBodyLabActions/.github/workflows/Tests.yml@main"
     with:
       group: "${{ matrix.group }}"
       nthreads: 4

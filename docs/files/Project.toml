@@ -1,0 +1,5 @@
+[deps]
+MPSKitParallel = "9e7a2049-d464-45e7-afa7-8ebdb5f1c98e"
+
+[compat]
+MPSKitParallel = "0.1"

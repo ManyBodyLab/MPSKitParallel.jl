@@ -1,121 +1,92 @@
-"""
-    @forward Foo.bar f, g, h
+# Programmatically generated typed forwarding macros.
 
-`@forward` simply forwards method definition to a given field of a struct.
-This is taken from ["MacroTools.jl"].
-For example, the above is  equivalent to
-
-```julia
-f(x::Foo, args...) = f(x.bar, args...)
-g(x::Foo, args...) = g(x.bar, args...)
-h(x::Foo, args...) = h(x.bar, args...)
-```
 """
+Typed forwarding macro generator.
+
+This file programmatically defines a small family of helper macros that
+generate thin forwarding methods. Each generated macro has the form
+
+    @forward_a Type.field f, g, h
+
+where `a` is the number of leading non-container positional arguments
+to keep unchanged. The macro emits methods that take `a` leading
+arguments followed by a container argument typed as `::Type` and
+delegate the call to the `field` of that container.
+
+Examples
+    - `@forward_0 Type.field f` =>
+            `f(x::Type, args...; kwargs...) = f(x.field, args...; kwargs...)`
+    - `@forward_1 Type.field f` =>
+            `f(a, x::Type, args...; kwargs...) = f(a, x.field, args...; kwargs...)`
+
+Each `@forward_a` also has an `_astype` sibling, `@forward_a_astype`,
+which wraps the forwarded call's result back into the container type
+using `Type(result, x.reduction, x.comm)`. Use the `_astype` variant
+when the underlying function returns a bare value that should be
+converted to the container type.
+"""
+
+# helper used in many macros
+using MacroTools: @capture, isexpr
+
+# generator: create macros forward_a and forward_a_astype for a in 0:3
+for a in 0:3
+    # macro names
+    name_sym = Symbol("forward_$(a)")
+    name_astype_sym = Symbol("forward_$(a)_astype")
+
+    # Generate explicit argument names for this iteration
+    # e.g., if a=2, arg_names = [:x_1, :x_2]
+    arg_names = [Symbol("x_$i") for i in 1:a]
+
+    @eval begin
+        macro $(name_sym)(ex, fs)
+            @capture(ex, T_.field_) || error("Syntax: @$(string($(name_sym))) T.x f, g, h")
+            T = esc(T)
+            fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
+
+            _args = $arg_names
+
+            return :(
+                $(
+                    [
+                        :(
+                                $f($(_args...), y::$T, args...; kwargs...) =
+                                (Base.@inline; $f($(_args...), y.$field, args...; kwargs...))
+                            ) for f in fs
+                    ]...
+                );
+                nothing
+            )
+        end
+
+        macro $(name_astype_sym)(ex, fs)
+            @capture(ex, T_.field_) || error("Syntax: @$(string($(name_astype_sym))) T.x f, g, h")
+            T = esc(T)
+            fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
+
+            _args = $arg_names
+
+            return :(
+                $(
+                    [
+                        :(
+                                $f($(_args...), y::$T, args...; kwargs...) =
+                                (Base.@inline; $T($f($(_args...), y.$field, args...; kwargs...), y.reduction, y.comm))
+                            ) for f in fs
+                    ]...
+                );
+                nothing
+            )
+        end
+    end
+end
+
+# Convenience wrappers for the common a=0 case
 macro forward(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(x::$T, args...; kwargs...) =
-         (Base.@inline; $f(x.$field, args...; kwargs...)))
-       for f in fs]...);
-    nothing)
+    return :(@forward_0 $ex $fs)
 end
 
-"""
-    @forward2 Foo.bar f, g, h
-
-`@forward2` forwards the first two positional arguments to a given field.
-For example, the above is equivalent to
-
-```julia
-f(x::Foo, y::Foo, args...) = f(x.bar, y.bar, args...)
-g(x::Foo, y::Foo, args...) = g(x.bar, y.bar, args...)
-h(x::Foo, y::Foo, args...) = h(x.bar, y.bar, args...)
-```
-
-Note: the macro requires the second argument to be of the same container type as the
-first (both are typed as the captured `T`).
-"""
-macro forward2(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(x::$T, y::$T, args...; kwargs...) =
-         (Base.@inline; $f(x.$field, y.$field, args...; kwargs...)))
-       for f in fs]...);
-    nothing)
-end
-
-"""
-    @forward_a_b Type.field f, g, ...
-
-Generate methods that keep the first a args as-is and project the a+1,..,a+b args onto `field`.
-
-Expands roughly to:
-
-    f(x, y::Type, args...) = f(x, y.field, args...)
-"""
-macro forward_1_1(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(a,x::$T, args...; kwargs...) =
-         (Base.@inline; $f(a, x.$field, args...; kwargs...)))
-       for f in fs]...);
-    nothing)
-end
-macro forward_1_1_astype(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(a,x::$T, args...; kwargs...) =
-         (Base.@inline; $T($f(a, x.$field, args...; kwargs...), x.reduction, x.comm)))
-       for f in fs]...);
-    nothing)
-end
-
-macro forward_2_1(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(a,b,x::$T, args...; kwargs...) =
-         (Base.@inline; $f(a, b, x.$field, args...; kwargs...)))
-       for f in fs]...);
-    nothing)
-end
-macro forward_2_2(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(a,b,x::$T, y::$T, args...; kwargs...) =
-         (Base.@inline; $f(a, b, x.$field, y.$field, args...; kwargs...)))
-       for f in fs]...);
-    nothing)
-end
-macro forward_3_1(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(a,b,c,x::$T, y::$T, args...; kwargs...) =
-         (Base.@inline; $f(a, b, c, x.$field, y.$field, args...; kwargs...)))
-       for f in fs]...);
-    nothing)
-end
-macro forward_3_1_astype(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward2 T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(a,b,c,x::$T, y::$T, args...; kwargs...) =
-         (Base.@inline; $T($f(a, b, c, x.$field, y.$field, args...; kwargs...), x.reduction, x.comm)))
-       for f in fs]...);
-    nothing)
-end
 macro forward_astype(ex, fs)
-  @capture(ex, T_.field_) || error("Syntax: @forward T.x f, g, h")
-  T = esc(T)
-  fs = isexpr(fs, :tuple) ? map(esc, fs.args) : [esc(fs)]
-  :($([:($f(x::$T, args...; kwargs...) =
-         (Base.@inline; $T($f(x.$field, args...; kwargs...), x.reduction, x.comm)))
-       for f in fs]...);
-    nothing)
+    return :(@forward_0_astype $ex $fs)
 end

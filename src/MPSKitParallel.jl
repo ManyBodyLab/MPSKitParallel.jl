@@ -1,3 +1,6 @@
+"""
+Distributed computing (MPI) for MPSKit.jl
+"""
 module MPSKitParallel
 
 # Public API
@@ -16,7 +19,7 @@ using MacroTools
 using LinearAlgebra
 using VectorInterface
 
-using MPIHelper
+using MPILargeCounts
 
 import LinearAlgebra: norm
 import VectorInterface: scale
@@ -30,6 +33,17 @@ using MPSKit: _mul_front
 using MPSKit.DynamicTols: updatetol
 using Base.Threads: @spawn, @sync
 
-include("includes.jl")
+include("utility/forward.jl")
+
+include("MPIOperator/mpioperator.jl")
+include("MPIOperator/derivatives.jl")
+include("MPIOperator/environments.jl")
+include("MPIOperator/ortho.jl")
+include("MPIOperator/transfermatrix.jl")
+include("algorithms/expval.jl")
+include("algorithms/grassmann.jl")
+
+include("algorithms/groundstate/vumps.jl")
+include("algorithms/groundstate/idmrg.jl")
 
 end

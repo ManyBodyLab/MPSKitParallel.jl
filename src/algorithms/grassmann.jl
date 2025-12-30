@@ -1,4 +1,5 @@
 ## Here, we overload some functions of the GrassmannMPS local module in MPSKit.jl
+# TODO: With the style rewrite, this will become obsolete!
 
 using MPSKit: AbstractMPSEnvironments, InfiniteEnvironments, MultilineEnvironments, AC_hamiltonian, recalculate!
 using TensorKit
