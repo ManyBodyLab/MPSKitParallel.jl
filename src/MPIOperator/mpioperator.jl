@@ -58,8 +58,12 @@ end
 @forward_astype MPIOperator.parent MPSKit.remove_orphans!
 @forward_1 MPIOperator.parent MPSKit._fuse_mpo_mpo
 
-MPSKit.OperatorStyle(::MPIOperator{O}) where {O} = MPSKit.OperatorStyle(O)
-MPSKit.GeometryStyle(::MPIOperator{O}) where {O} = MPSKit.GeometryStyle(O)
+if isdefined(MPSKit, :OperatorStyle)
+    MPSKit.OperatorStyle(::MPIOperator{O}) where {O} = MPSKit.OperatorStyle(O)
+end
+if isdefined(MPSKit, :GeometryStyle)
+    MPSKit.GeometryStyle(::MPIOperator{O}) where {O} = MPSKit.GeometryStyle(O)
+end
 
 # ---------------------- MPSKit MPO constructor ------------------------
 function MPIOperator(
